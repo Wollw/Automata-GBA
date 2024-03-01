@@ -3,16 +3,16 @@
 #include "bn_sprite_ptr.h"
 #include "bn_sprite_actions.h"
 #include "bn_sprite_items_cell.h"
+#include "bn_sprite_items_cursor.h"
 #include "bn_keypad.h"
 #include "bn_vector.h"
 #include "bn_camera_ptr.h"
-
-#include <vector>
+#include "bn_timer.h"
 
 #define CELL_SIZE 8
 
-#define WORLD_X 16
-#define WORLD_Y 8
+#define WORLD_X 10
+#define WORLD_Y 10
 
 #define CAMERA_X 60
 #define CAMERA_Y 30
@@ -33,9 +33,62 @@ class Cell {
 		_state = s;
 		_sprite.set_visible(s);
 	};
+	
+	void toggle_state() {
+		set_state(!_state);
+	}
 };
 
 typedef bn::vector<bn::vector<Cell, WORLD_Y>, WORLD_X> World;
+
+class Cursor {
+	int _x, _y;
+	bn::sprite_ptr _sprite;
+	bool _visible;
+	
+	public:
+	Cursor(bn::sprite_ptr &&sprite, int x, int y) :  _sprite(bn::move(sprite))
+	{
+		_visible = true;
+		_x = x;
+		_y = y;
+	};
+
+	void set_pos(int x, int y) {
+		_x = x;
+		_y = y;
+		_sprite.set_position(_x, _y);
+	};
+
+	bn::sprite_ptr get_sprite() {
+		return _sprite;
+	};
+
+	void move(int x, int y) {
+		x += _x;
+		y += _y;
+		if (x < 0 || x >= WORLD_X || y < 0 || y >= WORLD_Y)
+			return;
+		_x = x;
+		_y = y;
+		_sprite.set_position(
+			_x * CELL_SIZE,
+			_y * CELL_SIZE);
+	};
+
+	void toggle_visible() {
+		_visible = !_visible;
+		_sprite.set_visible(_visible);
+	}
+
+	int get_x() {
+		return _x;
+	};
+
+	int get_y() {
+		return _y;
+	};
+};
 
 void update_world(World &w) {
 	// Get number of living neighbors
@@ -67,6 +120,8 @@ void update_world(World &w) {
 	}}
 }
 
+
+
 int main() {
 	bn::core::init();
 	bn::camera_ptr camera = bn::camera_ptr::create(CAMERA_X,CAMERA_Y);
@@ -83,38 +138,40 @@ int main() {
 			world[i].push_back(c);
 	}}
 
-	// Blinker
-	//world[1][0].set_state(true);
-	//world[1][1].set_state(true);
-	//world[1][2].set_state(true);
+	Cursor c = Cursor(bn::sprite_items::cursor.create_sprite(0,0), 0, 0);
+	c.get_sprite().set_camera(camera);
 
-	// Toad
-	//world[3][4].set_state(true);	
-	//world[4][4].set_state(true);	
-	//world[5][4].set_state(true);	
-	//world[4][5].set_state(true);	
-	//world[5][5].set_state(true);	
-	//world[6][5].set_state(true);	
+	bn::timer t = bn::timer();
 
-	// Beacon
-	//world[8][0].set_state(true);
-	//world[8][1].set_state(true);
-	//world[9][0].set_state(true);
-	//world[10][3].set_state(true);
-	//world[11][3].set_state(true);
-	//world[11][2].set_state(true);
-
-	// Glider
-	world[0][2].set_state(true);
-	world[1][0].set_state(true);
-	world[1][2].set_state(true);
-	world[2][2].set_state(true);
-	world[2][1].set_state(true);
+	bool running = false;
 
 	while(true)
 	{
-		if (bn::keypad::a_pressed())
+
+		if (bn::keypad::b_pressed()) {
+			running = !running;
+			c.toggle_visible();
+		}
+
+		if (!running) {
+			if (bn::keypad::down_pressed())
+				c.move(0,1);
+			if (bn::keypad::up_pressed())
+				c.move(0,-1);
+			if (bn::keypad::left_pressed())
+				c.move(-1,0);
+			if (bn::keypad::right_pressed())
+				c.move(1,0);
+			if (bn::keypad::a_pressed()) {
+				int x = c.get_x();
+				int y = c.get_y();
+				world[x][y].toggle_state();
+			}
+		} else if (running && t.elapsed_ticks() > 100000) {
 			update_world(world);
+			t.restart();
+		}
+
 		bn::core::update();
 	}
 }
