@@ -1,45 +1,173 @@
 #include "bn_core.h"
 
+#include "bn_bg_tiles.h"
 #include "bn_sprite_ptr.h"
-#include "bn_sprite_actions.h"
-#include "bn_sprite_items_cell.h"
+#include "bn_regular_bg_ptr.h"
+#include "bn_regular_bg_item.h"
+#include "bn_regular_bg_map_ptr.h"
+#include "bn_regular_bg_tiles_ptr.h"
+#include "bn_regular_bg_map_cell_info.h"
 #include "bn_sprite_items_cursor.h"
 #include "bn_keypad.h"
 #include "bn_vector.h"
 #include "bn_camera_ptr.h"
 #include "bn_timer.h"
+#include "bn_memory.h"
+
+#include "bn_regular_bg_tiles_items_cell.h"
+#include "bn_bg_palette_items_palette.h"
 
 #define CELL_SIZE 8
 
-#define WORLD_X 10
-#define WORLD_Y 10
-
-#define CAMERA_X 60
-#define CAMERA_Y 30
-
-class Cell {
-
-	bn::sprite_ptr _sprite;
-	bool _state;
+class World {
 
 	public:
-	Cell(bn::sprite_ptr&& sprite, bool state) : _sprite(bn::move(sprite)), _state(state)
-	{
-		_sprite.set_visible(_state);
-	};
-	bn::sprite_ptr get_sprite() { return _sprite; };
-	bool get_state() { return _state; };
-	void set_state(bool s) {
-		_state = s;
-		_sprite.set_visible(s);
-	};
+	static constexpr int world_x = 28;
+	static constexpr int world_y = 18;
+
+	private:
+	static constexpr int offset_x = 2;
+	static constexpr int offset_y = 7;
+
+	static constexpr int bg_cols = 32;
+	static constexpr int bg_rows = 32;
+
+	static constexpr int width = 8;
+	static constexpr int height = 8;
+
+	alignas(int) bn::regular_bg_map_cell cells[World::bg_cols * World::bg_rows];
+	bn::regular_bg_map_item map_item;
+	bn::regular_bg_item bg_item;
+	bn::regular_bg_ptr bg;	
+	bn::regular_bg_map_ptr bg_map;
+
+	public:
 	
-	void toggle_state() {
-		set_state(!_state);
+	World() :
+		map_item(cells[0], bn::size(
+			World::bg_cols,
+			World::bg_rows)),
+		bg_item(bn::regular_bg_tiles_items::cell,
+			bn::bg_palette_items::palette,
+			map_item),
+		bg(bg_item.create_bg(0,0)),
+		bg_map(bg.map())
+	{
+		bn::memory::clear(bg_rows * bg_cols, cells[0]);
+
+		for (int i = 0; i < bg_rows; i++) {
+		for (int j = 0; j < bg_cols; j++) {
+			_set_cell(i,j,0,false,false);
+		}}
+
+		set_cell(-1,-1,2);
+		set_cell(-1,18,5);
+		set_cell_hflip(28,-1,2);
+		set_cell_hflip(28,18,5);
+		for (int i = 0; i < 28; i++) {
+			set_cell(i,-1,3);
+			set_cell(i,18,6);
+		}
+		for (int j = 0; j < 18; j++) {
+			set_cell(-1, j, 4);
+			set_cell_hflip(28, j, 4);
+		}
+
+		update();
 	}
+
+	void _set_cell(int x, int y, int id, bool hflip, bool vflip) {
+		bn::regular_bg_map_cell& c = cells[map_item.cell_index(x,y)];
+		bn::regular_bg_map_cell_info c_info(c);
+		c_info.set_tile_index(id);
+		c_info.set_palette_id(0);
+		c_info.set_horizontal_flip(hflip);
+		c_info.set_vertical_flip(vflip);
+		c = c_info.cell();
+	}
+
+	void set_cell(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, false, false);
+	}
+
+	void set_cell_hflip(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, true, false);
+	}
+
+	void set_cell_vflip(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, false, true);
+	}
+
+	void set_cell_hvflip(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, true, true);
+	}
+
+	void update() {
+		bg_map.reload_cells_ref();
+	}
+	
 };
 
-typedef bn::vector<bn::vector<Cell, WORLD_Y>, WORLD_X> World;
+typedef bn::vector<bn::vector<bool, World::world_y>,World::world_x> State;
+
+class Automaton {
+	World world;
+	State state;
+	int width = World::world_x;
+	int height = World::world_y;
+	public:
+	Automaton() {
+		state.resize(width);
+		for (int i = 0; i < state.size(); i++)
+			state[i].resize(height);
+		update();
+	}
+
+	void update() {
+
+		bn::vector<bn::vector<int, World::world_y>, World::world_x> neighbors;
+		neighbors.resize(width);
+		for (int i = 0; i < width; i++) {
+		neighbors[i].resize(height);
+		for (int j = 0; j < height; j++) {
+			neighbors[i][j] = 0;
+			for (int ii = i - 1; ii <= i + 1; ii++) {
+			for (int jj = j - 1; jj <= j + 1; jj++) {
+				if (ii != i || jj != j)
+				if (ii >= 0 && jj >= 0 && ii < width && jj < height)
+					neighbors[i][j] += state[ii][jj];
+			}}
+		}}
+		
+		for (int i = 0; i < width; i++) {
+		for (int j = 0; j < height; j++) {
+			int n = neighbors[i][j];
+			if (state[i][j]) {
+				if (n < 2 || n > 3)
+					state[i][j] = false;
+			} else if (n == 3) {
+					state[i][j] = true;
+			}
+			world.set_cell(i,j,state[i][j]);
+		} }
+		
+		world.update();
+	}
+
+	void set_cell(int i, int j, bool s) {
+		state[i][j] = s;
+		world.set_cell(i,j,state[i][j]);
+		world.update();
+	}
+
+	bool get_cell(int i, int j) {
+		return state[i][j];
+	}
+
+	void toggle_cell(int i, int j) {
+		set_cell(i, j, !state[i][j]);
+	}
+};
 
 class Cursor {
 	int _x, _y;
@@ -47,7 +175,10 @@ class Cursor {
 	bool _visible;
 	
 	public:
-	Cursor(bn::sprite_ptr &&sprite, int x, int y) :  _sprite(bn::move(sprite))
+	Cursor(int x, int y) :
+		_sprite(bn::sprite_items::cursor.create_sprite(
+			CELL_SIZE * -World::world_x/2 + CELL_SIZE/2,
+			CELL_SIZE * -World::world_y/2 + CELL_SIZE/2))
 	{
 		_visible = true;
 		_x = x;
@@ -67,13 +198,13 @@ class Cursor {
 	void move(int x, int y) {
 		x += _x;
 		y += _y;
-		if (x < 0 || x >= WORLD_X || y < 0 || y >= WORLD_Y)
+		if (x < 0 || x >= World::world_x || y < 0 || y >= World::world_y)
 			return;
 		_x = x;
 		_y = y;
 		_sprite.set_position(
-			_x * CELL_SIZE,
-			_y * CELL_SIZE);
+			CELL_SIZE * -World::world_x/2 + CELL_SIZE/2 + _x * CELL_SIZE,
+			CELL_SIZE * -World::world_y/2 + CELL_SIZE/2 + _y * CELL_SIZE);
 	};
 
 	void toggle_visible() {
@@ -90,88 +221,51 @@ class Cursor {
 	};
 };
 
-void update_world(World &w) {
-	// Get number of living neighbors
-	bn::vector<bn::vector<int, WORLD_Y>, WORLD_X> neighbors;
-	for (int i = 0; i < WORLD_X; i++) {
-		neighbors.resize(WORLD_X);
-		for (int j = 0; j < WORLD_Y; j++) {
-			int n = 0;
-			for (int ii = i - 1; ii <= i + 1; ii++) {
-			for (int jj = j - 1; jj <= j + 1; jj++) {
-				if (ii != i || jj != j)
-				if (ii >= 0 && jj >= 0 && ii < WORLD_X && jj < WORLD_Y)
-					n += w[ii][jj].get_state() ? 1 : 0;
-			}}
-			neighbors[i].push_back(n);
-	}}
-
-
-	for (int i = 0; i < WORLD_X; i++) {
-	for (int j = 0; j < WORLD_Y; j++) {
-		int n = neighbors[i][j];
-		// Apply Conway
-		if (w[i][j].get_state()) {
-			if (n < 2 || n > 3)
-				w[i][j].set_state(false);
-		} else if (n == 3) {
-				w[i][j].set_state(true);
-		}
-	}}
-}
-
-
 
 int main() {
 	bn::core::init();
-	bn::camera_ptr camera = bn::camera_ptr::create(CAMERA_X,CAMERA_Y);
 
-	World world;
-	for (int i = 0; i < WORLD_X; i++) {
-		world.resize(WORLD_X);
-		for (int j = 0; j < WORLD_Y; j++) {
-			Cell c = Cell(bn::sprite_items::cell.create_sprite(
-					CELL_SIZE * i,
-					CELL_SIZE * j),
-				false);
-			c.get_sprite().set_camera(camera);
-			world[i].push_back(c);
-	}}
+	Automaton a;
 
-	Cursor c = Cursor(bn::sprite_items::cursor.create_sprite(0,0), 0, 0);
-	c.get_sprite().set_camera(camera);
-
-	bn::timer t = bn::timer();
+	Cursor c = Cursor(0, 0);
 
 	bool running = false;
+	bn::timer t = bn::timer();
+
 
 	while(true)
 	{
-
-		if (bn::keypad::b_pressed()) {
-			running = !running;
-			c.toggle_visible();
-		}
-
-		if (!running) {
-			if (bn::keypad::down_pressed())
-				c.move(0,1);
+		if (running) {
+			if (t.elapsed_ticks() > 100000) {
+				a.update();
+				t.restart();
+			}
+			if (bn::keypad::start_pressed()) {
+				running = false;
+				c.toggle_visible();
+			}
+		} else {
 			if (bn::keypad::up_pressed())
 				c.move(0,-1);
+			if (bn::keypad::down_pressed())
+				c.move(0,1);
 			if (bn::keypad::left_pressed())
 				c.move(-1,0);
 			if (bn::keypad::right_pressed())
 				c.move(1,0);
+
 			if (bn::keypad::a_pressed()) {
 				int x = c.get_x();
 				int y = c.get_y();
-				world[x][y].toggle_state();
+				a.toggle_cell(x,y);
 			}
-		} else if (running && t.elapsed_ticks() > 100000) {
-			update_world(world);
-			t.restart();
-		}
 
+			if (bn::keypad::start_pressed()) {
+				running = true;
+				c.toggle_visible();
+			}
+			
+		}
 		bn::core::update();
 	}
 }
