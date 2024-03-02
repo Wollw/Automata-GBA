@@ -7,17 +7,132 @@
 #include "bn_regular_bg_map_ptr.h"
 #include "bn_regular_bg_tiles_ptr.h"
 #include "bn_regular_bg_map_cell_info.h"
+#include "bn_regular_bg_actions.h"
 #include "bn_sprite_items_cursor.h"
 #include "bn_keypad.h"
 #include "bn_vector.h"
 #include "bn_camera_ptr.h"
 #include "bn_timer.h"
 #include "bn_memory.h"
+#include "bn_sram.h"
 
 #include "bn_regular_bg_tiles_items_cell.h"
 #include "bn_bg_palette_items_palette.h"
 
 #define CELL_SIZE 8
+
+struct Rule {
+	char live[8];
+	char dead[8];
+};
+typedef struct Rule Rule;
+
+class Menu {
+
+	private:
+	static constexpr int offset_x = 2;
+	static constexpr int offset_y = 7;
+
+	static constexpr int bg_cols = 32;
+	static constexpr int bg_rows = 32;
+
+	static constexpr int width = 8;
+	static constexpr int height = 8;
+
+	Rule *rule;
+
+	alignas(int) bn::regular_bg_map_cell cells[Menu::bg_cols * Menu::bg_rows];
+	bn::regular_bg_map_item map_item;
+	bn::regular_bg_item bg_item;
+	bn::regular_bg_ptr bg;	
+	bn::regular_bg_map_ptr bg_map;
+
+	public:
+	
+	Menu(Rule *r) :
+		rule(r),
+		map_item(cells[0], bn::size(
+			Menu::bg_cols,
+			Menu::bg_rows)),
+		bg_item(bn::regular_bg_tiles_items::cell,
+			bn::bg_palette_items::palette,
+			map_item),
+		bg(bg_item.create_bg(0,0)),
+		bg_map(bg.map())
+	{
+		bn::memory::clear(bg_rows * bg_cols, cells[0]);
+
+		set_cell(-1,-1,2);
+		set_cell(-1,0,4);
+		set_cell(-1,1,4);
+		set_cell(-1,2,5);
+		for (int i = 0; i < 8; i++) {
+			set_cell(i,-1,3);
+			set_cell(i,0, rule->dead[i]);
+			set_cell(i,1, rule->live[i]);
+			set_cell(i,2, 6);
+		}
+		set_cell_hflip(8,-1,2);
+		set_cell_hflip(8,0,4);
+		set_cell_hflip(8,1,4);
+		set_cell_hflip(8,2,5);
+
+		update();
+	}
+
+	void redraw_rules() {
+		for (int i = 0; i < 8; i++) {
+			set_cell(i,0, rule->dead[i]);
+			set_cell(i,1, rule->live[i]);
+		}
+		update();
+	}
+
+	void _set_cell(int x, int y, int id, bool hflip, bool vflip) {
+		bn::regular_bg_map_cell& c = cells[map_item.cell_index(x,y)];
+		bn::regular_bg_map_cell_info c_info(c);
+		c_info.set_tile_index(id);
+		c_info.set_palette_id(0);
+		c_info.set_horizontal_flip(hflip);
+		c_info.set_vertical_flip(vflip);
+		c = c_info.cell();
+	}
+
+	void set_cell(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, false, false);
+	}
+
+	void set_cell_hflip(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, true, false);
+	}
+
+	void set_cell_vflip(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, false, true);
+	}
+
+	void set_cell_hvflip(int x, int y, int id) {
+		_set_cell(x + offset_x, y + offset_y, id, true, true);
+	}
+
+	void toggle_rule(int i, int j) {
+		if (j == 0) {
+			rule->dead[i] = !rule->dead[i];
+		} else {
+			rule->live[i] = !rule->live[i];
+		}
+		redraw_rules();
+	}
+
+	void update() {
+		bg_map.reload_cells_ref();
+	}
+
+	void toggle_visible() {
+		bool v = bn::regular_bg_visible_manager::get(bg);
+		bn::regular_bg_visible_manager::set(!v, bg);
+	}
+
+};
 
 class World {
 
@@ -110,13 +225,15 @@ class World {
 
 typedef bn::vector<bn::vector<bool, World::world_y>,World::world_x> State;
 
+
 class Automaton {
 	World world;
 	State state;
 	int width = World::world_x;
 	int height = World::world_y;
+	Rule *rule;
 	public:
-	Automaton() {
+	Automaton(Rule *r) : rule(r) {
 		state.resize(width);
 		for (int i = 0; i < state.size(); i++)
 			state[i].resize(height);
@@ -143,10 +260,9 @@ class Automaton {
 		for (int j = 0; j < height; j++) {
 			int n = neighbors[i][j];
 			if (state[i][j]) {
-				if (n < 2 || n > 3)
-					state[i][j] = false;
-			} else if (n == 3) {
-					state[i][j] = true;
+					state[i][j] = rule->live[n];
+			} else {
+					state[i][j] = rule->dead[n];
 			}
 			world.set_cell(i,j,state[i][j]);
 		} }
@@ -167,12 +283,35 @@ class Automaton {
 	void toggle_cell(int i, int j) {
 		set_cell(i, j, !state[i][j]);
 	}
+
+	void save() {
+		for (int i = 0; i < width; i++) {
+		for (int j = 0; j < height; j++) {
+			bn::sram::write_offset((state[i][j]), 512 + j * (width + 1) + i);
+		}}
+	}
+
+	void load() {
+		for (int i = 0; i < width; i++) {
+		for (int j = 0; j < height; j++) {
+			bool s;
+			bn::sram::read_offset(s, 512 + j * (width + 1) + i);
+			set_cell(i,j,s);
+		}}
+		
+	}
+
 };
 
 class Cursor {
 	int _x, _y;
 	bn::sprite_ptr _sprite;
 	bool _visible;
+
+	int _min_x = 0;
+	int _max_x = World::world_x - 1;
+	int _min_y = 0;
+	int _max_y = World::world_y - 1;
 	
 	public:
 	Cursor(int x, int y) :
@@ -184,6 +323,13 @@ class Cursor {
 		_x = x;
 		_y = y;
 	};
+
+	void set_constraints(int min_x, int max_x, int min_y, int max_y) {
+		_min_x = min_x;
+		_max_x = max_x;
+		_min_y = min_y;
+		_max_y = max_y;
+	}
 
 	void set_pos(int x, int y) {
 		_x = x;
@@ -198,7 +344,7 @@ class Cursor {
 	void move(int x, int y) {
 		x += _x;
 		y += _y;
-		if (x < 0 || x >= World::world_x || y < 0 || y >= World::world_y)
+		if (x < _min_x || x > _max_x || y < _min_y || y > _max_y)
 			return;
 		_x = x;
 		_y = y;
@@ -219,24 +365,80 @@ class Cursor {
 	int get_y() {
 		return _y;
 	};
-};
 
+	void save() {
+		bn::sram::write_offset(_x, 128);
+		bn::sram::write_offset(_y, 256);
+	}
+
+	void load() {
+		bn::sram::read_offset(_x, 128);
+		bn::sram::read_offset(_y, 256);
+		_sprite.set_position(
+			CELL_SIZE * -World::world_x/2 + CELL_SIZE/2 + _x * CELL_SIZE,
+			CELL_SIZE * -World::world_y/2 + CELL_SIZE/2 + _y * CELL_SIZE);
+	}
+};
 
 int main() {
 	bn::core::init();
 
-	Automaton a;
+	Rule r = Rule
+		{ .live = {0,0,1,1,0,0,0,0}
+		, .dead = {0,0,0,1,0,0,0,0}};
+
+	bn::sram::read(r);
+
+	Automaton a(&r);
+	a.load();
+
+	Menu menu(&r);
+	menu.toggle_visible();
 
 	Cursor c = Cursor(0, 0);
+	c.load();
+	Cursor menu_c = Cursor(0, 0);
+	menu_c.toggle_visible();
+	menu_c.set_constraints(0,7,0,1);
 
 	bool running = false;
-	bn::timer t = bn::timer();
+	bool menuing = false;
 
+	bn::timer t = bn::timer();
 
 	while(true)
 	{
-		if (running) {
-			if (t.elapsed_ticks() > 100000) {
+		if (menuing) {
+
+			if (bn::keypad::up_pressed())
+				menu_c.move(0,-1);
+			if (bn::keypad::down_pressed())
+				menu_c.move(0,1);
+			if (bn::keypad::left_pressed())
+				menu_c.move(-1,0);
+			if (bn::keypad::right_pressed())
+				menu_c.move(1,0);
+
+			if (bn::keypad::a_pressed()) {
+				int x = menu_c.get_x();
+				int y = menu_c.get_y();
+				menu.toggle_rule(x,y);
+			}
+
+			if (bn::keypad::start_pressed()) {
+				c.save();
+				a.save();	
+			}
+
+			if (bn::keypad::select_pressed()) {
+				menuing = false;
+				menu.toggle_visible();
+				c.toggle_visible();
+				menu_c.toggle_visible();
+				bn::sram::write(r);
+			}
+		} else if (running) {
+			if (t.elapsed_ticks() > 50000) {
 				a.update();
 				t.restart();
 			}
@@ -263,6 +465,13 @@ int main() {
 			if (bn::keypad::start_pressed()) {
 				running = true;
 				c.toggle_visible();
+			}
+
+			if (bn::keypad::select_pressed()) {
+				menuing = true;
+				menu.toggle_visible();
+				c.toggle_visible();
+				menu_c.toggle_visible();
 			}
 			
 		}
