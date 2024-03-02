@@ -22,8 +22,8 @@
 #define CELL_SIZE 8
 
 struct Rule {
-	char live[8];
-	char dead[8];
+	char live[9];
+	char dead[9];
 };
 typedef struct Rule Rule;
 
@@ -36,8 +36,8 @@ class Menu {
 	static constexpr int bg_cols = 32;
 	static constexpr int bg_rows = 32;
 
-	static constexpr int width = 8;
-	static constexpr int height = 8;
+	static constexpr int width = 9;
+	static constexpr int height = 9;
 
 	Rule *rule;
 
@@ -66,22 +66,22 @@ class Menu {
 		set_cell(-1,0,4);
 		set_cell(-1,1,4);
 		set_cell(-1,2,5);
-		for (int i = 0; i < 8; i++) {
+		for (int i = 0; i < 9; i++) {
 			set_cell(i,-1,3);
 			set_cell(i,0, rule->dead[i]);
 			set_cell(i,1, rule->live[i]);
 			set_cell(i,2, 6);
 		}
-		set_cell_hflip(8,-1,2);
-		set_cell_hflip(8,0,4);
-		set_cell_hflip(8,1,4);
-		set_cell_hflip(8,2,5);
+		set_cell_hflip(9,-1,2);
+		set_cell_hflip(9,0,4);
+		set_cell_hflip(9,1,4);
+		set_cell_hflip(9,2,5);
 
 		update();
 	}
 
 	void redraw_rules() {
-		for (int i = 0; i < 8; i++) {
+		for (int i = 0; i < 9; i++) {
 			set_cell(i,0, rule->dead[i]);
 			set_cell(i,1, rule->live[i]);
 		}
@@ -384,8 +384,8 @@ int main() {
 	bn::core::init();
 
 	Rule r = Rule
-		{ .live = {0,0,1,1,0,0,0,0}
-		, .dead = {0,0,0,1,0,0,0,0}};
+		{ .live = {0,0,1,1,0,0,0,0,0}
+		, .dead = {0,0,0,1,0,0,0,0,0}};
 
 	Automaton a(&r);
 	Menu menu(&r);
@@ -394,7 +394,7 @@ int main() {
 	Cursor c = Cursor(0, 0);
 	Cursor menu_c = Cursor(0, 0);
 	menu_c.toggle_visible();
-	menu_c.set_constraints(0,7,0,1);
+	menu_c.set_constraints(0,8,0,1);
 
 	bool running = false;
 	bool menuing = false;
