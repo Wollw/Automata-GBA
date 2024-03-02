@@ -428,6 +428,7 @@ int main() {
 			if (bn::keypad::start_pressed()) {
 				c.save();
 				a.save();	
+				bn::sram::write(r);
 			}
 
 			if (bn::keypad::select_pressed()) {
@@ -435,7 +436,6 @@ int main() {
 				menu.toggle_visible();
 				c.toggle_visible();
 				menu_c.toggle_visible();
-				bn::sram::write(r);
 			}
 		} else if (running) {
 			if (t.elapsed_ticks() > 50000) {
