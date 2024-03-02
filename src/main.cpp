@@ -229,6 +229,7 @@ typedef bn::vector<bn::vector<bool, World::world_y>,World::world_x> State;
 class Automaton {
 	World world;
 	State state;
+	bool torus = false;
 	int width = World::world_x;
 	int height = World::world_y;
 	Rule *rule;
@@ -238,6 +239,14 @@ class Automaton {
 		for (int i = 0; i < state.size(); i++)
 			state[i].resize(height);
 		update();
+	}
+
+	void set_torus(bool t) {
+		torus = t;
+	}
+
+	bool get_torus() {
+		return torus;
 	}
 
 	void update() {
@@ -250,9 +259,14 @@ class Automaton {
 			neighbors[i][j] = 0;
 			for (int ii = i - 1; ii <= i + 1; ii++) {
 			for (int jj = j - 1; jj <= j + 1; jj++) {
-				if (ii != i || jj != j)
-				if (ii >= 0 && jj >= 0 && ii < width && jj < height)
-					neighbors[i][j] += state[ii][jj];
+				if (ii != i || jj != j) {
+					if (torus) {
+						int x = ii < 0 ? width -1 : ii;
+						int y = jj < 0 ? height -1 : jj;
+						neighbors[i][j] += state[x%width][y%height];
+					} else if (ii >= 0 && jj >= 0 && ii < width && jj < height)
+						neighbors[i][j] += state[ii][jj];	
+				}
 			}}
 		}}
 		
@@ -388,6 +402,8 @@ int main() {
 		, .dead = {0,0,0,1,0,0,0,0,0}};
 
 	Automaton a(&r);
+	a.set_torus(true);
+	
 	Menu menu(&r);
 	menu.toggle_visible();
 
