@@ -387,16 +387,11 @@ int main() {
 		{ .live = {0,0,1,1,0,0,0,0}
 		, .dead = {0,0,0,1,0,0,0,0}};
 
-	bn::sram::read(r);
-
 	Automaton a(&r);
-	a.load();
-
 	Menu menu(&r);
 	menu.toggle_visible();
 
 	Cursor c = Cursor(0, 0);
-	c.load();
 	Cursor menu_c = Cursor(0, 0);
 	menu_c.toggle_visible();
 	menu_c.set_constraints(0,7,0,1);
@@ -408,6 +403,18 @@ int main() {
 
 	while(true)
 	{
+		if (bn::keypad::l_pressed()) {
+			a.load();
+			c.load();
+			bn::sram::read(r);
+			menu.redraw_rules();
+		}
+		if (bn::keypad::r_pressed()) {
+			c.save();
+			a.save();	
+			bn::sram::write(r);
+		}
+			
 		if (menuing) {
 
 			if (bn::keypad::up_pressed())
@@ -425,13 +432,8 @@ int main() {
 				menu.toggle_rule(x,y);
 			}
 
-			if (bn::keypad::start_pressed()) {
-				c.save();
-				a.save();	
-				bn::sram::write(r);
-			}
 
-			if (bn::keypad::select_pressed()) {
+			if (bn::keypad::b_pressed() || bn::keypad::select_pressed()) {
 				menuing = false;
 				menu.toggle_visible();
 				c.toggle_visible();
@@ -445,6 +447,14 @@ int main() {
 			if (bn::keypad::start_pressed()) {
 				running = false;
 				c.toggle_visible();
+			}
+			if (bn::keypad::select_pressed()) {
+				running = false;
+				c.toggle_visible();
+				menuing = true;
+				menu.toggle_visible();
+				c.toggle_visible();
+				menu_c.toggle_visible();
 			}
 		} else {
 			if (bn::keypad::up_pressed())
