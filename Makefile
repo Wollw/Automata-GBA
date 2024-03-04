@@ -27,7 +27,7 @@
 #
 # All directories are specified relative to the project directory where the makefile is found.
 #---------------------------------------------------------------------------------------------------------------------
-TARGET      :=  Automata
+TARGET      :=  $(notdir $(CURDIR))
 BUILD       :=  build
 LIBBUTANO   :=  /opt/butano/butano
 PYTHON      :=  python
@@ -37,7 +37,7 @@ DATA        :=
 GRAPHICS    :=  graphics
 AUDIO       :=  audio
 DMGAUDIO    :=  dmg_audio
-ROMTITLE    :=  Automata
+ROMTITLE    :=  ROM TITLE
 ROMCODE     :=  SBTP
 USERFLAGS   :=  
 USERASFLAGS :=  
