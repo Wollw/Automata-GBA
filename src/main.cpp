@@ -126,7 +126,7 @@ class Item {
     }
 
     typedef void (*F)(Item*, void *p);
-    void on_a(F f, void *p) {
+    void run_fn(F f, void *p) {
         f(this, p);
     }
 
@@ -199,8 +199,8 @@ class Cursor {
     }
 
     typedef void (*F)(Item*, void *p);
-    void on_a(F f, void *p) {
-        _current_item->on_a(f, p);
+    void run_fn(F f, void *p) {
+        _current_item->run_fn(f, p);
     }
 
     void toggle_visible() {
@@ -592,7 +592,7 @@ int main()
                 cursor->right();
             }
             if (bn::keypad::a_pressed()) {
-                cursor->on_a([](Item *i, void *p) {
+                cursor->run_fn([](Item *i, void *p) {
                     i->set_state(!i->get_state());
                     ((World*)p)->redraw();
                 }, &world);
@@ -629,7 +629,7 @@ int main()
                 Data data;
                 data.s = &settings_menu;
                 data.w = &world;
-                cursor->on_a([](Item *i, void *p) {
+                cursor->run_fn([](Item *i, void *p) {
                     BN_LOG("ID: ", i->get_id());
 
                     Settings *s = ((Data*) p)->s;
